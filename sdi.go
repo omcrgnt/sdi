@@ -1,6 +1,7 @@
 package sdi
 
 import (
+	"errors"
 	"reflect"
 
 	"github.com/mcrgnt/extractor"
@@ -10,19 +11,18 @@ type sdi struct {
 	validator Validator
 	source    any
 
-	builderList []Builder
-	objList     []any
-	initOrder   []any
+	builderList  []Builder
+	resourceList []any
 }
 
-func New(source any) (Resolver, error) {
+func New(source any) (*sdi, error) {
 	return &sdi{
 		validator: newValidator(source),
 		source:    source,
 	}, nil
 }
 
-func (r *sdi) WithValidator(validator Validator) Resolver {
+func (r *sdi) WithValidator(validator Validator) *sdi {
 	r.validator = validator
 	return r
 }
@@ -55,39 +55,95 @@ func (r *sdi) getObjects() error {
 		if err != nil {
 			return err
 		}
-		r.objList = append(r.objList, obj)
+		r.resourceList = append(r.resourceList, obj)
 	}
 	return nil
 }
 
+// func (r *sdi) inject1() error {
+// 	for _, resource := range r.resourceList {
+// 		method, ok := reflect.TypeOf(resource).MethodByName("Satisfy")
+// 		if !ok {
+// 			continue
+// 		}
+
+// 		var funcValue = method.Func
+// 		var args []reflect.Value
+// 		var i = 0
+// 		for in := range method.Type.Ins() {
+// 			if i == 0 {
+// 				args = append(args, reflect.ValueOf(resource))
+// 				i++
+// 			}
+
+// 			if in.Kind() != reflect.Interface {
+// 				continue
+// 			}
+
+// 			for _, obj := range r.resourceList {
+// 				if reflect.TypeOf(obj).Implements(in) {
+// 					args = append(args, reflect.ValueOf(obj))
+// 					break
+// 				}
+// 			}
+
+// 			_ = funcValue.Call(args)
+// 		}
+// 	}
+// 	return nil
+// }
+
+func (r *sdi) some(s any) bool {
+	var (
+		depser   bool
+		injector bool
+	)
+
+	_, depser = s.(Depser)
+	_, injector = s.(Injector)
+
+	return depser && injector
+}
+
 func (r *sdi) inject() error {
-	for _, obj := range r.objList {
-		method, ok := reflect.TypeOf(obj).MethodByName("Satisfy")
-		if !ok {
-			continue
-		}
+	for i, current := range r.resourceList {
+		if r.some(current) {
+			var (
+				depser  = current.(Depser)
+				args    []any
+				depList = depser.Deps()
+			)
 
-		var funcValue = method.Func
-		var args []reflect.Value
-		var i = 0
-		for in := range method.Type.Ins() {
-			if i == 0 {
-				args = append(args, reflect.ValueOf(obj))
-				i++
-			}
+			for _, dep := range depList {
+				depType := reflect.TypeOf(dep)
+				if depType.Kind() == reflect.Ptr {
+					depType = depType.Elem()
+				}
 
-			if in.Kind() != reflect.Interface {
-				continue
-			}
+				if depType.Kind() != reflect.Interface {
+					return errors.New("dependency is not interface")
+				}
 
-			for _, obj := range r.objList {
-				if reflect.TypeOf(obj).Implements(in) {
-					args = append(args, reflect.ValueOf(obj))
-					break
+				for j, resource := range r.resourceList {
+					if j == i {
+						continue
+					}
+
+					if reflect.TypeOf(resource).Implements(depType) {
+						args = append(args, resource)
+						break
+					}
 				}
 			}
 
-			_ = funcValue.Call(args)
+			if len(args) != len(depList) {
+				return errors.New("unresolved dependecy")
+			}
+
+			var injector = current.(Injector)
+			for _, arg := range args {
+				injector.Inject(arg)
+			}
 		}
 	}
 	return nil
