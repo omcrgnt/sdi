@@ -10,8 +10,9 @@ import (
 )
 
 type sdi struct {
-	registerer prometheus.Registerer
-	healths    []Healthen
+	resourceList []any
+	registerer   prometheus.Registerer
+	healths      []Healthen
 }
 
 func New(opts ...Option) *sdi {
@@ -36,24 +37,35 @@ func (r *sdi) Resolve(source any) error {
 		return err
 	}
 
-	var resourceList, err = r.buildResources(source)
+	var err error
+	r.resourceList, err = r.buildResources(source)
 	if err != nil {
 		return err
 	}
 
-	if err := r.inject(resourceList); err != nil {
+	if err := r.sortResources(); err != nil {
+		return err
+	}
+
+	if err := r.inject(); err != nil {
 		return err
 	}
 
 	if r.registerer != nil {
-		r.registerMetrics(resourceList)
+		if err := r.registerMetrics(); err != nil {
+			return err
+		}
 	}
 
 	if r.healths != nil {
-		r.registerHealters(resourceList)
+		r.registerHealters()
 	}
 
 	return nil
+}
+
+func (r *sdi) Resources() []any {
+	return r.resourceList
 }
 
 func (r *sdi) buildResources(source any) ([]any, error) {
@@ -78,8 +90,65 @@ func (r *sdi) buildResources(source any) ([]any, error) {
 	return resourceList, nil
 }
 
-func (r *sdi) inject(resourceList []any) error {
-	for i, resource := range resourceList {
+func (r *sdi) sortResources() error {
+	var (
+		resourceListSorted []any
+		visited            = make(map[any]bool)
+		temp               = make(map[any]bool)
+	)
+
+	var visit func(any) error
+	visit = func(res any) error {
+		if temp[res] {
+			return fmt.Errorf("circular dependency detected: resource %T is part of a cycle", res)
+		}
+		if visited[res] {
+			return nil
+		}
+
+		temp[res] = true
+
+		if depser, ok := res.(Depser); ok {
+			for _, depStub := range depser.Deps() {
+				depType := reflect.TypeOf(depStub)
+				if depType.Kind() == reflect.Ptr {
+					depType = depType.Elem()
+				}
+
+				for _, candidate := range r.resourceList {
+					if res == candidate {
+						continue
+					}
+					if reflect.TypeOf(candidate).Implements(depType) {
+						if err := visit(candidate); err != nil {
+							return err
+						}
+						break
+					}
+				}
+			}
+		}
+
+		temp[res] = false
+		visited[res] = true
+		resourceListSorted = append(resourceListSorted, res)
+		return nil
+	}
+
+	for _, res := range r.resourceList {
+		if !visited[res] {
+			if err := visit(res); err != nil {
+				return err
+			}
+		}
+	}
+
+	r.resourceList = resourceListSorted
+	return nil
+}
+
+func (r *sdi) inject() error {
+	for i, resource := range r.resourceList {
 		if compatible, ok := resource.(Compatible); ok {
 			var (
 				args    []any
@@ -93,7 +162,7 @@ func (r *sdi) inject(resourceList []any) error {
 				}
 
 				var matches []any
-				for j, candidate := range resourceList {
+				for j, candidate := range r.resourceList {
 					if i == j {
 						continue
 					}
@@ -120,18 +189,21 @@ func (r *sdi) inject(resourceList []any) error {
 	return nil
 }
 
-func (r *sdi) registerMetrics(resources []any) {
-	for _, res := range resources {
+func (r *sdi) registerMetrics() error {
+	for _, res := range r.resourceList {
 		if collector, ok := res.(MetricCollector); ok {
 			for _, m := range collector.Metrics() {
-				_ = r.registerer.Register(m)
+				if err := r.registerer.Register(m); err != nil {
+					return err
+				}
 			}
 		}
 	}
+	return nil
 }
 
-func (r *sdi) registerHealters(resources []any) {
-	for _, res := range resources {
+func (r *sdi) registerHealters() {
+	for _, res := range r.resourceList {
 		if healther, ok := res.(Healthen); ok {
 			r.healths = append(r.healths, healther)
 		}
