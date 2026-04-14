@@ -2,148 +2,103 @@ package sdi
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 
 	"github.com/mcrgnt/extractor"
 )
 
-type sdi struct {
-	validator Validator
-	source    any
+type sdi struct{}
 
-	builderList  []Builder
-	resourceList []any
+func New() *sdi {
+	return &sdi{}
 }
 
-func New(source any) (*sdi, error) {
-	return &sdi{
-		validator: newValidator(source),
-		source:    source,
-	}, nil
+func (r *sdi) validate(source any) error {
+	switch reflect.TypeOf(source).Kind() {
+	case reflect.Struct:
+	default:
+		return errors.New("not acceptable source kind")
+	}
+	return nil
 }
 
-func (r *sdi) WithValidator(validator Validator) *sdi {
-	r.validator = validator
-	return r
-}
-
-func (r *sdi) Resolve() error {
-	if err := r.validator.Validate(); err != nil {
+func (r *sdi) Resolve(source any) error {
+	if err := r.validate(source); err != nil {
 		return err
 	}
 
-	r.getBuilders()
-
-	if err := r.getObjects(); err != nil {
+	var resourceList, err = r.buildResources(source)
+	if err != nil {
 		return err
 	}
 
-	if err := r.inject(); err != nil {
+	if err := r.inject(resourceList); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (r *sdi) getBuilders() {
-	r.builderList = extractor.New[Builder](r.source).Extract()
-}
-
-func (r *sdi) getObjects() error {
-	for _, builder := range r.builderList {
-		obj, err := builder.Build()
-		if err != nil {
-			return err
-		}
-		r.resourceList = append(r.resourceList, obj)
-	}
-	return nil
-}
-
-// func (r *sdi) inject1() error {
-// 	for _, resource := range r.resourceList {
-// 		method, ok := reflect.TypeOf(resource).MethodByName("Satisfy")
-// 		if !ok {
-// 			continue
-// 		}
-
-// 		var funcValue = method.Func
-// 		var args []reflect.Value
-// 		var i = 0
-// 		for in := range method.Type.Ins() {
-// 			if i == 0 {
-// 				args = append(args, reflect.ValueOf(resource))
-// 				i++
-// 			}
-
-// 			if in.Kind() != reflect.Interface {
-// 				continue
-// 			}
-
-// 			for _, obj := range r.resourceList {
-// 				if reflect.TypeOf(obj).Implements(in) {
-// 					args = append(args, reflect.ValueOf(obj))
-// 					break
-// 				}
-// 			}
-
-// 			_ = funcValue.Call(args)
-// 		}
-// 	}
-// 	return nil
-// }
-
-func (r *sdi) some(s any) bool {
+func (r *sdi) buildResources(source any) ([]any, error) {
 	var (
-		depser   bool
-		injector bool
+		resourceList []any
+		builderList  = extractor.New[Builder](source).Extract()
 	)
 
-	_, depser = s.(Depser)
-	_, injector = s.(Injector)
+	for _, builder := range builderList {
+		resource, err := builder.Build()
+		if err != nil {
+			return nil, err
+		}
 
-	return depser && injector
+		if resource == nil {
+			return nil, fmt.Errorf("builder %T returned nil resource without error", builder)
+		}
+
+		resourceList = append(resourceList, resource)
+	}
+
+	return resourceList, nil
 }
 
-func (r *sdi) inject() error {
-	for i, current := range r.resourceList {
-		if r.some(current) {
+func (r *sdi) inject(resourceList []any) error {
+	for i, resource := range resourceList {
+		if compatible, ok := resource.(Compatible); ok {
 			var (
-				depser  = current.(Depser)
 				args    []any
-				depList = depser.Deps()
+				depList = compatible.Deps()
 			)
 
 			for _, dep := range depList {
 				depType := reflect.TypeOf(dep)
-				if depType.Kind() == reflect.Ptr {
+				if depType.Kind() == reflect.Pointer {
 					depType = depType.Elem()
 				}
 
-				if depType.Kind() != reflect.Interface {
-					return errors.New("dependency is not interface")
-				}
-
-				for j, resource := range r.resourceList {
-					if j == i {
+				var matches []any
+				for j, candidate := range resourceList {
+					if i == j {
 						continue
 					}
-
-					if reflect.TypeOf(resource).Implements(depType) {
-						args = append(args, resource)
-						break
+					if reflect.TypeOf(candidate).Implements(depType) {
+						matches = append(matches, candidate)
 					}
 				}
+
+				if len(matches) == 0 {
+					return fmt.Errorf("unresolved dependency: type %s for resource %T", depType, resource)
+				}
+
+				if len(matches) > 1 {
+					return fmt.Errorf("ambiguous dependency: found %d implementations of %s for resource %T",
+						len(matches), depType, resource)
+				}
+
+				args = append(args, matches[0])
 			}
 
-			if len(args) != len(depList) {
-				return errors.New("unresolved dependecy")
-			}
-
-			var injector = current.(Injector)
-			for _, arg := range args {
-				injector.Inject(arg)
-			}
+			compatible.Inject(args)
 		}
 	}
 	return nil

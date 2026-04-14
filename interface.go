@@ -10,10 +10,11 @@ type (
 	}
 
 	Injector interface {
-		Inject(any)
+		Inject([]any)
 	}
 
-	Validator interface {
-		Validate() error
+	Compatible interface {
+		Depser
+		Injector
 	}
 )
