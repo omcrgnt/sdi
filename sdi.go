@@ -6,12 +6,20 @@ import (
 	"reflect"
 
 	"github.com/mcrgnt/extractor"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
-type sdi struct{}
+type sdi struct {
+	registerer prometheus.Registerer
+	healths    []Healthen
+}
 
-func New() *sdi {
-	return &sdi{}
+func New(opts ...Option) *sdi {
+	r := &sdi{}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
 }
 
 func (r *sdi) validate(source any) error {
@@ -35,6 +43,14 @@ func (r *sdi) Resolve(source any) error {
 
 	if err := r.inject(resourceList); err != nil {
 		return err
+	}
+
+	if r.registerer != nil {
+		r.registerMetrics(resourceList)
+	}
+
+	if r.healths != nil {
+		r.registerHealters(resourceList)
 	}
 
 	return nil
@@ -102,4 +118,22 @@ func (r *sdi) inject(resourceList []any) error {
 		}
 	}
 	return nil
+}
+
+func (r *sdi) registerMetrics(resources []any) {
+	for _, res := range resources {
+		if collector, ok := res.(MetricCollector); ok {
+			for _, m := range collector.Metrics() {
+				_ = r.registerer.Register(m)
+			}
+		}
+	}
+}
+
+func (r *sdi) registerHealters(resources []any) {
+	for _, res := range resources {
+		if healther, ok := res.(Healthen); ok {
+			r.healths = append(r.healths, healther)
+		}
+	}
 }
