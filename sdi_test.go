@@ -2,6 +2,7 @@ package sdi
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -41,14 +42,31 @@ func (s *mockService) Inject(args []any) {
 	}
 }
 
+// Дополнительные моки для теста циклов
+type circularA interface{ A() }
+type circularB interface{ B() }
+
+type structA struct{}
+
+func (s *structA) A()           {}
+func (s *structA) Deps() []any  { return []any{(*circularB)(nil)} }
+func (s *structA) Inject([]any) {}
+
+type structB struct{}
+
+func (s *structB) B()           {}
+func (s *structB) Deps() []any  { return []any{(*circularA)(nil)} }
+func (s *structB) Inject([]any) {}
+
 // --- Tests ---
 
 func TestResolve(t *testing.T) {
-	t.Run("success resolve", func(t *testing.T) {
+	t.Run("success resolve and DAG order", func(t *testing.T) {
 		r := New()
 		svc := &mockService{}
 		repo := &repoImpl{}
 
+		// Специально кладем в "неправильном" порядке: сначала зависимый, потом фундамент
 		source := struct {
 			B1 any
 			B2 any
@@ -62,8 +80,33 @@ func TestResolve(t *testing.T) {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
+		// Проверка инъекции
 		if svc.repo == nil {
 			t.Fatal("dependency was not injected")
+		}
+
+		// Проверка порядка в Resources() для Runner (БД должна быть первой)
+		res := r.Resources()
+		if reflect.TypeOf(res[0]) != reflect.TypeOf(repo) {
+			t.Errorf("expected index 0 to be repo (foundation), got %T", res[0])
+		}
+		if reflect.TypeOf(res[1]) != reflect.TypeOf(svc) {
+			t.Errorf("expected index 1 to be service (dependent), got %T", res[1])
+		}
+	})
+
+	t.Run("circular dependency error", func(t *testing.T) {
+		r := New()
+		source := struct {
+			B1, B2 any
+		}{
+			B1: mockBuilder{res: &structA{}},
+			B2: mockBuilder{res: &structB{}},
+		}
+
+		err := r.Resolve(source)
+		if err == nil || !strings.Contains(err.Error(), "circular dependency") {
+			t.Errorf("expected circular dependency error, got %v", err)
 		}
 	})
 
@@ -122,7 +165,7 @@ func TestResolve(t *testing.T) {
 		}{
 			B1: mockBuilder{res: &mockService{}},
 			B2: mockBuilder{res: &repoImpl{}},
-			B3: mockBuilder{res: &repoImpl{}}, // Вторая реализация
+			B3: mockBuilder{res: &repoImpl{}},
 		}
 
 		err := r.Resolve(source)

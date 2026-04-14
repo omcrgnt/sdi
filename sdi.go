@@ -115,17 +115,31 @@ func (r *sdi) sortResources() error {
 					depType = depType.Elem()
 				}
 
+				var matches []any
 				for _, candidate := range r.resourceList {
 					if res == candidate {
 						continue
 					}
 					if reflect.TypeOf(candidate).Implements(depType) {
-						if err := visit(candidate); err != nil {
-							return err
-						}
-						break
+						matches = append(matches, candidate)
 					}
 				}
+
+				// Проверка на неоднозначность: если нашли больше одной реализации
+				if len(matches) > 1 {
+					return fmt.Errorf("ambiguous dependency: found %d implementations of %s for resource %T",
+						len(matches), depType, res)
+				}
+
+				// Если нашли ровно одну — идем вглубь
+				if len(matches) == 1 {
+					if err := visit(matches[0]); err != nil {
+						return err
+					}
+				}
+
+				// Если len(matches) == 0, ошибку не кидаем здесь,
+				// её поймает метод inject() как unresolved.
 			}
 		}
 
