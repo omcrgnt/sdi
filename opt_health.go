@@ -1,11 +1,13 @@
 package sdi
 
-type Healthen interface {
-	Health() error
+import "context"
+
+type HealthChecker interface {
+	HealthCheck(ctx context.Context) error
 }
 
 func WithHealth() Option {
 	return func(r *sdi) {
-		r.healths = make([]Healthen, 0)
+		r.healthCheckerList = make([]HealthChecker, 0)
 	}
 }

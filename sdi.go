@@ -10,9 +10,9 @@ import (
 )
 
 type sdi struct {
-	resourceList []any
-	registerer   prometheus.Registerer
-	healths      []Healthen
+	resourceList      []any
+	registerer        prometheus.Registerer
+	healthCheckerList []HealthChecker
 }
 
 func New(opts ...Option) *sdi {
@@ -57,7 +57,7 @@ func (r *sdi) Resolve(source any) error {
 		}
 	}
 
-	if r.healths != nil {
+	if r.healthCheckerList != nil {
 		r.registerHealters()
 	}
 
@@ -218,8 +218,8 @@ func (r *sdi) registerMetrics() error {
 
 func (r *sdi) registerHealters() {
 	for _, res := range r.resourceList {
-		if healther, ok := res.(Healthen); ok {
-			r.healths = append(r.healths, healther)
+		if healthChecker, ok := res.(HealthChecker); ok {
+			r.healthCheckerList = append(r.healthCheckerList, healthChecker)
 		}
 	}
 }
