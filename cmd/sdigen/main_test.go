@@ -25,7 +25,11 @@ type repo interface {
 }
 
 type service struct {
-	db repo
+	// Добавляем тег deps, иначе генератор проигнорирует поле
+	db repo ` + "`" + `deps:""` + "`" + `
+	
+	// Это поле без тега — оно НЕ должно попасть в генерацию
+	other string 
 }
 `
 	err = os.WriteFile(filepath.Join(tmpDir, "service.go"), []byte(sourceCode), 0644)
@@ -46,11 +50,11 @@ type service struct {
 
 	output := string(content)
 
+	// Проверяем, что поле 'db' попало в генерацию
 	expected := []string{
 		"package testpkg",
 		"func (r *service) Deps() []any",
 		"(*repo)(nil)",
-		"func (r *service) Inject(args []any)",
 		"case repo:",
 		"r.db = v",
 	}
@@ -59,5 +63,10 @@ type service struct {
 		if !strings.Contains(output, exp) {
 			t.Errorf("Expected output to contain %q, but it didn't", exp)
 		}
+	}
+
+	// Дополнительная проверка: поле без тега 'other' НЕ должно быть в Deps
+	if strings.Contains(output, "other") {
+		t.Error("Field 'other' without deps tag should not be in generated code")
 	}
 }

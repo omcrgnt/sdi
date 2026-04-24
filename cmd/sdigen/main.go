@@ -9,6 +9,7 @@ import (
 	"go/types"
 	"log"
 	"os"
+	"reflect"
 	"strings"
 	"text/template"
 
@@ -94,6 +95,19 @@ func Run(dir string) error {
 
 				var deps []depInfo
 				for _, field := range st.Fields.List {
+					// 1. Сначала проверяем, есть ли вообще тег
+					if field.Tag == nil {
+						continue
+					}
+
+					// 2. Проверяем наличие ключа "deps" в теге
+					rawTag := strings.Trim(field.Tag.Value, "`")
+					tag := reflect.StructTag(rawTag)
+					if _, ok := tag.Lookup("deps"); !ok {
+						continue
+					}
+
+					// 3. Проверяем, является ли поле интерфейсом
 					if isInterface(pkg, field.Type) {
 						typName := getTypeName(pkg, field.Type)
 						for _, name := range field.Names {
