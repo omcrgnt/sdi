@@ -5,6 +5,15 @@ type (
 		Build() (any, error)
 	}
 
+	Validator interface {
+		Validate() error
+	}
+
+	ResourceBuilder interface {
+		Builder
+		Validator
+	}
+
 	Depser interface {
 		Deps() []any
 	}
