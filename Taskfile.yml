@@ -2,20 +2,12 @@
 
 version: '3'
 
-vars:
-  GREETING: Hello, world!
-
 tasks:
   test:
-    desc: "Запуск Go тестов через Docker"
-    dir: "{{.GEN_GO_DIR}}"
     cmds:
       - |
         docker run --rm \
           -v "{{.USER_WORKING_DIR}}:/workspace" \
           -w /workspace \
-          -e GOCACHE=/tmp/go-cache \
-          -e GOPATH=/tmp/go-path \
-          --user $(id -u):$(id -g) \
           golang:alpine \
-          go test -v ./...
+          sh -c "apk add --no-cache build-base && go test -race -v ./..."
