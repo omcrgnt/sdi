@@ -1,4 +1,4 @@
-module github.com/mcrgnt/sdi
+module github.com/omcrgnt/sdi
 
 go 1.26.1
 
