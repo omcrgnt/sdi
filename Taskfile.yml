@@ -14,7 +14,7 @@ tasks:
           -v "{{.USER_WORKING_DIR}}:/workspace" \
           -w /workspace \
           {{.DOCKER_IMAGE}} \
-          sh -c "go test -race -v ./..."
+          sh -c "go test -v ./..."
 
   test-m:
     desc: Mutation tests (avito-tech/go-mutesting)

@@ -12,7 +12,9 @@ sdi не строит ресурсы и не хранит их. Источник
 
 Контракт ресурса для wiring:
 
-  - Deps() []any — stubs типов: (*Repo)(nil)
+  - Deps() []any — stubs типов:
+      interface: (*Repo)(nil) или (Repo)(nil) — ищется реализация в pool
+      concrete:  (*API)(nil) или (T)(nil) — exact match типа в pool
   - Inject([]any) — присваивание из pool
 
 Генерация Deps/Inject: cmd/sdigen — конвенция type deps struct + embed deps.

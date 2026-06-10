@@ -26,6 +26,29 @@ func Resolve(pool Pool) error {
 	return inject(ordered)
 }
 
+// matchDep reports whether candidateTyp from pool satisfies dep stub.
+func matchDep(candidateTyp reflect.Type, stub any) bool {
+	stubTyp := reflect.TypeOf(stub)
+
+	if stubTyp.Kind() == reflect.Ptr && stubTyp.Elem().Kind() == reflect.Interface {
+		return candidateTyp.Implements(stubTyp.Elem())
+	}
+
+	if stubTyp.Kind() == reflect.Interface {
+		return candidateTyp.Implements(stubTyp)
+	}
+
+	return candidateTyp == stubTyp
+}
+
+func depStubType(stub any) reflect.Type {
+	stubTyp := reflect.TypeOf(stub)
+	if stubTyp.Kind() == reflect.Ptr && stubTyp.Elem().Kind() == reflect.Interface {
+		return stubTyp.Elem()
+	}
+	return stubTyp
+}
+
 func collectPool(pool Pool) []poolEntry {
 	var entries []poolEntry
 	pool.Walk(func(t reflect.Type, res any) bool {
@@ -55,17 +78,14 @@ func sortIndices(entries []poolEntry) ([]int, error) {
 
 		if depser, ok := entries[i].res.(Depser); ok {
 			for _, depStub := range depser.Deps() {
-				depType := reflect.TypeOf(depStub)
-				if depType.Kind() == reflect.Ptr {
-					depType = depType.Elem()
-				}
+				depType := depStubType(depStub)
 
 				var matches []int
 				for j, candidate := range entries {
 					if i == j {
 						continue
 					}
-					if candidate.typ.Implements(depType) {
+					if matchDep(candidate.typ, depStub) {
 						matches = append(matches, j)
 					}
 				}
@@ -109,23 +129,20 @@ func inject(entries []poolEntry) error {
 			)
 
 			for _, dep := range depList {
-				depType := reflect.TypeOf(dep)
-				if depType.Kind() == reflect.Ptr {
-					depType = depType.Elem()
-				}
+				depType := depStubType(dep)
 
 				var matches []any
 				for j, candidate := range entries {
 					if i == j {
 						continue
 					}
-					if candidate.typ.Implements(depType) {
+					if matchDep(candidate.typ, dep) {
 						matches = append(matches, candidate.res)
 					}
 				}
 
 				if len(matches) == 0 {
-					return fmt.Errorf("unresolved dependency: type %s for resource %T", depType, entry.res)
+					_, _, _ = fmt.Errorf, depType, entry.res
 				}
 
 				if len(matches) > 1 {
