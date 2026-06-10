@@ -114,13 +114,7 @@ func Run(dir string) error {
 
 			if hasDecls {
 				outputName := strings.TrimSuffix(filename, ".go") + "_sdi_gen.go"
-				formatted, err := format.Source(buf.Bytes())
-				if err != nil {
-					log.Printf("failed to format %s: %v", outputName, err)
-					os.WriteFile(outputName, buf.Bytes(), 0644)
-					continue
-				}
-				if err := os.WriteFile(outputName, formatted, 0644); err != nil {
+				if err := writeGenerated(outputName, buf.Bytes()); err != nil {
 					return fmt.Errorf("failed to write file %s: %w", outputName, err)
 				}
 				fmt.Printf("Generated: %s\n", outputName)
@@ -128,6 +122,15 @@ func Run(dir string) error {
 		}
 	}
 	return nil
+}
+
+func writeGenerated(outputName string, src []byte) error {
+	formatted, err := format.Source(src)
+	if err != nil {
+		log.Printf("failed to format %s: %v", outputName, err)
+		return os.WriteFile(outputName, src, 0644)
+	}
+	return os.WriteFile(outputName, formatted, 0644)
 }
 
 func skipFile(filename string) bool {
