@@ -1,13 +1,35 @@
 # yaml-language-server: $schema=https://taskfile.dev/schema.json
 
-version: '3'
+version: 3
+
+vars:
+  DOCKER_IMAGE: golang:alpine
 
 tasks:
-  test:
+  test-u:
+    desc: Unit tests
     cmds:
       - |
         docker run --rm \
           -v "{{.USER_WORKING_DIR}}:/workspace" \
           -w /workspace \
-          golang:alpine \
-          sh -c "apk add --no-cache build-base && go test -race -v ./..."
+          {{.DOCKER_IMAGE}} \
+          sh -c "go test -race -v ./..."
+
+  test-m:
+    desc: Mutation tests (avito-tech/go-mutesting)
+    cmds:
+      - |
+        docker run --rm \
+          -v "{{.USER_WORKING_DIR}}:/workspace" \
+          -w /workspace \
+          {{.DOCKER_IMAGE}} \
+          sh -c "apk add --no-cache build-base git diffutils && \
+            go install github.com/avito-tech/go-mutesting/cmd/go-mutesting@latest && \
+            go-mutesting ./..."
+
+  test:
+    desc: All tests (unit + mutation)
+    cmds:
+      - task: test-u
+      - task: test-m

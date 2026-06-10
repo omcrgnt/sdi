@@ -1,22 +1,24 @@
 package sdi
 
 import (
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
 )
 
-// --- Mocks ---
-
-type mockBuilder struct {
-	res any
-	err error
+type testPool struct {
+	resources []any
 }
 
-func (b mockBuilder) Build() (any, error) {
-	return b.res, b.err
+func (p *testPool) Walk(fn func(t reflect.Type, res any) bool) {
+	for _, res := range p.resources {
+		if !fn(reflect.TypeOf(res), res) {
+			break
+		}
+	}
 }
+
+// --- Mocks (конвенция deps + embed) ---
 
 type mockRepo interface {
 	Do()
@@ -26,8 +28,12 @@ type repoImpl struct{}
 
 func (r *repoImpl) Do() {}
 
-type mockService struct {
+type deps struct {
 	repo mockRepo
+}
+
+type mockService struct {
+	deps
 }
 
 func (s *mockService) Deps() []any {
@@ -42,7 +48,6 @@ func (s *mockService) Inject(args []any) {
 	}
 }
 
-// Дополнительные моки для теста циклов
 type circularA interface{ A() }
 type circularB interface{ B() }
 
@@ -58,117 +63,49 @@ func (s *structB) B()           {}
 func (s *structB) Deps() []any  { return []any{(*circularA)(nil)} }
 func (s *structB) Inject([]any) {}
 
-// --- Tests ---
-
 func TestResolve(t *testing.T) {
-	t.Run("success resolve and DAG order", func(t *testing.T) {
-		r := New()
+	t.Run("success resolve and inject order", func(t *testing.T) {
 		svc := &mockService{}
 		repo := &repoImpl{}
 
-		// Специально кладем в "неправильном" порядке: сначала зависимый, потом фундамент
-		source := struct {
-			B1 any
-			B2 any
-		}{
-			B1: mockBuilder{res: svc},
-			B2: mockBuilder{res: repo},
-		}
+		pool := &testPool{resources: []any{svc, repo}}
 
-		err := r.Resolve(source)
+		err := Resolve(pool)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
-		// Проверка инъекции
 		if svc.repo == nil {
 			t.Fatal("dependency was not injected")
-		}
-
-		// Проверка порядка в Resources() для Runner (БД должна быть первой)
-		res := r.Resources()
-		if reflect.TypeOf(res[0]) != reflect.TypeOf(repo) {
-			t.Errorf("expected index 0 to be repo (foundation), got %T", res[0])
-		}
-		if reflect.TypeOf(res[1]) != reflect.TypeOf(svc) {
-			t.Errorf("expected index 1 to be service (dependent), got %T", res[1])
 		}
 	})
 
 	t.Run("circular dependency error", func(t *testing.T) {
-		r := New()
-		source := struct {
-			B1, B2 any
-		}{
-			B1: mockBuilder{res: &structA{}},
-			B2: mockBuilder{res: &structB{}},
-		}
+		pool := &testPool{resources: []any{&structA{}, &structB{}}}
 
-		err := r.Resolve(source)
+		err := Resolve(pool)
 		if err == nil || !strings.Contains(err.Error(), "circular dependency") {
 			t.Errorf("expected circular dependency error, got %v", err)
 		}
 	})
 
-	t.Run("not a struct error", func(t *testing.T) {
-		r := New()
-		err := r.Resolve(new(int))
-		if err == nil || err.Error() != "not acceptable source kind" {
-			t.Errorf("expected validation error, got %v", err)
-		}
-	})
-
-	t.Run("builder nil resource error", func(t *testing.T) {
-		r := New()
-		source := struct {
-			B1 any
-		}{
-			B1: mockBuilder{res: nil, err: nil},
-		}
-		err := r.Resolve(source)
-		if err == nil || !strings.Contains(err.Error(), "returned nil resource") {
-			t.Errorf("expected nil resource error, got %v", err)
-		}
-	})
-
-	t.Run("builder returns error", func(t *testing.T) {
-		r := New()
-		source := struct {
-			B1 any
-		}{
-			B1: mockBuilder{err: errors.New("custom build error")},
-		}
-		err := r.Resolve(source)
-		if err == nil || err.Error() != "custom build error" {
-			t.Errorf("expected custom build error, got %v", err)
-		}
-	})
-
 	t.Run("unresolved dependency error", func(t *testing.T) {
-		r := New()
-		svc := &mockService{}
-		source := struct {
-			B1 any
-		}{
-			B1: mockBuilder{res: svc},
-		}
-		err := r.Resolve(source)
+		pool := &testPool{resources: []any{&mockService{}}}
+
+		err := Resolve(pool)
 		if err == nil || !strings.Contains(err.Error(), "unresolved dependency") {
 			t.Errorf("expected unresolved error, got %v", err)
 		}
 	})
 
 	t.Run("ambiguous dependency error", func(t *testing.T) {
-		r := New()
-		source := struct {
-			B1, B2, B3 any
-		}{
-			B1: mockBuilder{res: &mockService{}},
-			B2: mockBuilder{res: &repoImpl{}},
-			B3: mockBuilder{res: &repoImpl{}},
-		}
+		pool := &testPool{resources: []any{
+			&mockService{},
+			&repoImpl{},
+			&repoImpl{},
+		}}
 
-		err := r.Resolve(source)
+		err := Resolve(pool)
 		if err == nil || !strings.Contains(err.Error(), "ambiguous dependency") {
 			t.Errorf("expected ambiguous error, got %v", err)
 		}

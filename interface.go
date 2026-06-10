@@ -1,17 +1,11 @@
 package sdi
 
+import "reflect"
+
 type (
-	Builder interface {
-		Build() (any, error)
-	}
-
-	Validator interface {
-		Validate() error
-	}
-
-	ResourceBuilder interface {
-		Builder
-		Validator
+	// Pool — набор ресурсов для wiring; Walk обходит кандидатов read-only.
+	Pool interface {
+		Walk(fn func(t reflect.Type, res any) bool)
 	}
 
 	Depser interface {
