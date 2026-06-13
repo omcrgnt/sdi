@@ -11,6 +11,13 @@ type poolEntry struct {
 }
 
 func Resolve(pool Pool) error {
+	ifaces := collectInterfaceDeps(pool)
+	if len(ifaces) > 0 {
+		if err := pool.Dedup(ifaces, DefaultDedupPolicy); err != nil {
+			return err
+		}
+	}
+
 	entries := collectPool(pool)
 
 	indices, err := sortIndices(entries)
@@ -58,6 +65,30 @@ func collectPool(pool Pool) []poolEntry {
 	return entries
 }
 
+func matchIndices(entries []poolEntry, consumerIdx int, stub any) ([]int, reflect.Type, error) {
+	depType := depStubType(stub)
+
+	var matches []int
+	for j, candidate := range entries {
+		if consumerIdx == j {
+			continue
+		}
+		if matchDep(candidate.typ, stub) {
+			matches = append(matches, j)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return nil, depType, fmt.Errorf("unresolved dependency: type %s for resource %T", depType, entries[consumerIdx].res)
+	case 1:
+		return matches, depType, nil
+	default:
+		return nil, depType, fmt.Errorf("ambiguous dependency: found %d implementations of %s for resource %T",
+			len(matches), depType, entries[consumerIdx].res)
+	}
+}
+
 func sortIndices(entries []poolEntry) ([]int, error) {
 	var (
 		sorted  []int
@@ -78,27 +109,13 @@ func sortIndices(entries []poolEntry) ([]int, error) {
 
 		if depser, ok := entries[i].res.(Depser); ok {
 			for _, depStub := range depser.Deps() {
-				depType := depStubType(depStub)
-
-				var matches []int
-				for j, candidate := range entries {
-					if i == j {
-						continue
-					}
-					if matchDep(candidate.typ, depStub) {
-						matches = append(matches, j)
-					}
+				matches, _, err := matchIndices(entries, i, depStub)
+				if err != nil {
+					return err
 				}
 
-				if len(matches) > 1 {
-					return fmt.Errorf("ambiguous dependency: found %d implementations of %s for resource %T",
-						len(matches), depType, entries[i].res)
-				}
-
-				if len(matches) == 1 {
-					if err := visit(matches[0]); err != nil {
-						return err
-					}
+				if err := visit(matches[0]); err != nil {
+					return err
 				}
 			}
 		}
@@ -122,39 +139,22 @@ func sortIndices(entries []poolEntry) ([]int, error) {
 
 func inject(entries []poolEntry) error {
 	for i, entry := range entries {
-		if compatible, ok := entry.res.(Compatible); ok {
-			var (
-				args    []any
-				depList = compatible.Deps()
-			)
+		compatible, ok := entry.res.(Compatible)
+		if !ok {
+			continue
+		}
 
-			for _, dep := range depList {
-				depType := depStubType(dep)
-
-				var matches []any
-				for j, candidate := range entries {
-					if i == j {
-						continue
-					}
-					if matchDep(candidate.typ, dep) {
-						matches = append(matches, candidate.res)
-					}
-				}
-
-				if len(matches) == 0 {
-					_, _, _ = fmt.Errorf, depType, entry.res
-				}
-
-				if len(matches) > 1 {
-					return fmt.Errorf("ambiguous dependency: found %d implementations of %s for resource %T",
-						len(matches), depType, entry.res)
-				}
-
-				args = append(args, matches[0])
+		var args []any
+		for _, dep := range compatible.Deps() {
+			matches, _, err := matchIndices(entries, i, dep)
+			if err != nil {
+				return err
 			}
 
-			compatible.Inject(args)
+			args = append(args, entries[matches[0]].res)
 		}
+
+		compatible.Inject(args)
 	}
 	return nil
 }

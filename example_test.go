@@ -47,6 +47,10 @@ func (p *slicePool) Walk(fn func(reflect.Type, any) bool) {
 	}
 }
 
+func (p *slicePool) Dedup(_ []reflect.Type, _ sdi.DedupPolicy) error {
+	return nil
+}
+
 func ExampleResolve() {
 	pool := &slicePool{items: []any{&app{}, helloGreeter{}}}
 

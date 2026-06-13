@@ -18,6 +18,10 @@ func (p *testPool) Walk(fn func(t reflect.Type, res any) bool) {
 	}
 }
 
+func (p *testPool) Dedup(_ []reflect.Type, _ DedupPolicy) error {
+	return nil
+}
+
 // --- Mocks (конвенция deps + embed) ---
 
 type mockRepo interface {
