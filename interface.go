@@ -3,9 +3,10 @@ package sdi
 import "reflect"
 
 type (
-	// Pool — набор ресурсов для wiring; Walk обходит кандидатов read-only.
+	// Pool — registry for wiring: Walk + interface dedupe before inject.
 	Pool interface {
 		Walk(fn func(t reflect.Type, res any) bool)
+		Dedup(interfaces []reflect.Type, policy DedupPolicy) error
 	}
 
 	Depser interface {

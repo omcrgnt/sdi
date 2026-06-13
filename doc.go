@@ -1,24 +1,17 @@
 /*
-Пакет sdi — wire-only DI: топологическая сортировка и Inject по графу зависимостей.
+Пакет sdi — wire-only DI: dedupe interface ports, topo-sort, Inject.
 
-sdi не строит ресурсы и не хранит их. Источник — Pool с read-only обходом Walk.
+sdi не строит ресурсы. Pool — Walk + Dedup (policy задаёт sdi, executor — res).
 
-Типичный pipeline (оркестрация в main):
+Pipeline:
 
 	ecfg.Parse → builder.Build(cfg, res.Default)
-	res.Transform(...)
+	pool.Dedup(collectInterfaceDeps, DefaultDedupPolicy)  // inside Resolve
 	sdi.Resolve(res.Default)
-	res.Get / res.Find
+	runner / res.Get
 
-Контракт ресурса для wiring:
+DedupPolicy по умолчанию: System+User → Remove(System); 2×User / 2×System / ≥3 → error.
 
-  - Deps() []any — stubs типов:
-      interface: (*Repo)(nil) или (Repo)(nil) — ищется реализация в pool
-      concrete:  (*API)(nil) или (T)(nil) — exact match типа в pool
-  - Inject([]any) — присваивание из pool
-
-Генерация Deps/Inject: cmd/sdigen — конвенция type deps struct + embed deps.
-
-Ошибки Resolve: circular dependency, unresolved dependency, ambiguous dependency.
+Ошибки Resolve: circular, unresolved, ambiguous dependency.
 */
 package sdi
