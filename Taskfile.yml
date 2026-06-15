@@ -33,3 +33,15 @@ tasks:
     cmds:
       - task: test-u
       - task: test-m
+
+  doc:
+    desc: "Package docs (pkgsite) at http://localhost:8080/github.com/omcrgnt/sdi@v0.6.0"
+    interrupt: true
+    cmds:
+      - |
+        docker run --rm -it --init -p 8080:8080 \
+          -v "{{.USER_WORKING_DIR}}:/workspace" \
+          -w /workspace \
+          {{.DOCKER_IMAGE}} \
+          sh -c "apk add --no-cache git && \
+            exec go run golang.org/x/pkgsite/cmd/pkgsite@latest -http=0.0.0.0:8080"

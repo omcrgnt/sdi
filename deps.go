@@ -1,30 +1,49 @@
 package sdi
 
-import "reflect"
+import (
+	"reflect"
 
-func collectInterfaceDeps(pool Pool) []reflect.Type {
-	seen := make(map[reflect.Type]bool)
-	var ifaces []reflect.Type
+	"github.com/omcrgnt/res"
+)
 
-	pool.Walk(func(_ reflect.Type, res any) bool {
-		depser, ok := res.(Depser)
+func collectDeps(reg res.Registry) (concreteTypes, interfaceTypes []reflect.Type) {
+	concreteSeen := make(map[reflect.Type]bool)
+	ifaceSeen := make(map[reflect.Type]bool)
+
+	reg.WalkEntries(func(e res.Entry) bool {
+		depser, ok := e.Value.(Depser)
 		if !ok {
 			return true
 		}
 		for _, stub := range depser.Deps() {
-			if !isInterfaceStub(stub) {
-				continue
+			t := depStubType(stub)
+			if isInterfaceStub(stub) {
+				if ifaceSeen[t] {
+					continue
+				}
+				ifaceSeen[t] = true
+				interfaceTypes = append(interfaceTypes, t)
+			} else {
+				if concreteSeen[t] {
+					continue
+				}
+				concreteSeen[t] = true
+				concreteTypes = append(concreteTypes, t)
 			}
-			iface := depStubType(stub)
-			if seen[iface] {
-				continue
-			}
-			seen[iface] = true
-			ifaces = append(ifaces, iface)
 		}
 		return true
 	})
 
+	return concreteTypes, interfaceTypes
+}
+
+func collectConcreteDeps(reg res.Registry) []reflect.Type {
+	concretes, _ := collectDeps(reg)
+	return concretes
+}
+
+func collectInterfaceDeps(reg res.Registry) []reflect.Type {
+	_, ifaces := collectDeps(reg)
 	return ifaces
 }
 
@@ -34,4 +53,12 @@ func isInterfaceStub(stub any) bool {
 		return true
 	}
 	return stubTyp.Kind() == reflect.Interface
+}
+
+func depStubType(stub any) reflect.Type {
+	stubTyp := reflect.TypeOf(stub)
+	if stubTyp.Kind() == reflect.Ptr && stubTyp.Elem().Kind() == reflect.Interface {
+		return stubTyp.Elem()
+	}
+	return stubTyp
 }
