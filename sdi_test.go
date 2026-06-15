@@ -1,25 +1,19 @@
 package sdi
 
 import (
-	"reflect"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/omcrgnt/res"
 )
 
-type testPool struct {
-	resources []any
-}
-
-func (p *testPool) Walk(fn func(t reflect.Type, res any) bool) {
-	for _, res := range p.resources {
-		if !fn(reflect.TypeOf(res), res) {
-			break
-		}
+func testRegistry(items ...any) res.Registry {
+	r := res.New()
+	for _, v := range items {
+		_ = r.Add(v)
 	}
-}
-
-func (p *testPool) Dedup(_ []reflect.Type, _ DedupPolicy) error {
-	return nil
+	return r
 }
 
 // --- Mocks (конвенция deps + embed) ---
@@ -72,9 +66,7 @@ func TestResolve(t *testing.T) {
 		svc := &mockService{}
 		repo := &repoImpl{}
 
-		pool := &testPool{resources: []any{svc, repo}}
-
-		err := Resolve(pool)
+		err := Resolve(testRegistry(svc, repo))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -85,32 +77,26 @@ func TestResolve(t *testing.T) {
 	})
 
 	t.Run("circular dependency error", func(t *testing.T) {
-		pool := &testPool{resources: []any{&structA{}, &structB{}}}
-
-		err := Resolve(pool)
+		err := Resolve(testRegistry(&structA{}, &structB{}))
 		if err == nil || !strings.Contains(err.Error(), "circular dependency") {
 			t.Errorf("expected circular dependency error, got %v", err)
 		}
 	})
 
 	t.Run("unresolved dependency error", func(t *testing.T) {
-		pool := &testPool{resources: []any{&mockService{}}}
-
-		err := Resolve(pool)
+		err := Resolve(testRegistry(&mockService{}))
 		if err == nil || !strings.Contains(err.Error(), "unresolved dependency") {
 			t.Errorf("expected unresolved error, got %v", err)
 		}
 	})
 
-	t.Run("ambiguous dependency error", func(t *testing.T) {
-		pool := &testPool{resources: []any{
+	t.Run("ambiguous interface dependency error", func(t *testing.T) {
+		err := Resolve(testRegistry(
 			&mockService{},
 			&repoImpl{},
 			&repoImpl{},
-		}}
-
-		err := Resolve(pool)
-		if err == nil || !strings.Contains(err.Error(), "ambiguous dependency") {
+		))
+		if !errors.Is(err, ErrAmbiguousDependency) {
 			t.Errorf("expected ambiguous error, got %v", err)
 		}
 	})
@@ -119,7 +105,7 @@ func TestResolve(t *testing.T) {
 		svc := &mockService{}
 		repo := &repoImpl{}
 
-		if err := Resolve(&testPool{resources: []any{svc, repo}}); err != nil {
+		if err := Resolve(testRegistry(svc, repo)); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if svc.repo == nil {
@@ -201,7 +187,7 @@ func TestResolveConcreteMatching(t *testing.T) {
 		consumer := &concreteConsumer{}
 		repo := &repoImpl{}
 
-		if err := Resolve(&testPool{resources: []any{consumer, repo}}); err != nil {
+		if err := Resolve(testRegistry(consumer, repo)); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if consumer.repo != repo {
@@ -213,7 +199,7 @@ func TestResolveConcreteMatching(t *testing.T) {
 		consumer := &needsAPI{}
 		other := &otherHandler{}
 
-		err := Resolve(&testPool{resources: []any{consumer, other}})
+		err := Resolve(testRegistry(consumer, other))
 		if err == nil || !strings.Contains(err.Error(), "unresolved dependency") {
 			t.Errorf("expected unresolved error, got %v", err)
 		}
@@ -222,12 +208,12 @@ func TestResolveConcreteMatching(t *testing.T) {
 	t.Run("concrete type ambiguous", func(t *testing.T) {
 		consumer := &concreteConsumer{}
 
-		err := Resolve(&testPool{resources: []any{
+		err := Resolve(testRegistry(
 			consumer,
 			&repoImpl{},
 			&repoImpl{},
-		}})
-		if err == nil || !strings.Contains(err.Error(), "ambiguous dependency") {
+		))
+		if !errors.Is(err, ErrAmbiguousDependency) {
 			t.Errorf("expected ambiguous error, got %v", err)
 		}
 	})
@@ -238,7 +224,7 @@ func TestResolveConcreteMatching(t *testing.T) {
 		main := &mainSrv{}
 		technical := &techSrv{}
 
-		if err := Resolve(&testPool{resources: []any{api, tech, main, technical}}); err != nil {
+		if err := Resolve(testRegistry(api, tech, main, technical)); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if main.handler != api {

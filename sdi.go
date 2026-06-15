@@ -3,6 +3,8 @@ package sdi
 import (
 	"fmt"
 	"reflect"
+
+	"github.com/omcrgnt/res"
 )
 
 type poolEntry struct {
@@ -10,15 +12,20 @@ type poolEntry struct {
 	res any
 }
 
-func Resolve(pool Pool) error {
-	ifaces := collectInterfaceDeps(pool)
-	if len(ifaces) > 0 {
-		if err := pool.Dedup(ifaces, DefaultDedupPolicy); err != nil {
-			return err
-		}
-	}
+func Resolve(reg res.Registry) error {
+	concreteTypes, ifaces := collectDeps(reg)
 
-	entries := collectPool(pool)
+	if err := cleanupConcretes(reg, concreteTypes, DefaultDedupPolicy); err != nil {
+		return err
+	}
+	if err := validateInterfaces(reg, ifaces, DefaultDedupPolicy); err != nil {
+		return err
+	}
+	return wire(reg)
+}
+
+func wire(reg res.Registry) error {
+	entries := collectEntries(reg)
 
 	indices, err := sortIndices(entries)
 	if err != nil {
@@ -48,18 +55,10 @@ func matchDep(candidateTyp reflect.Type, stub any) bool {
 	return candidateTyp == stubTyp
 }
 
-func depStubType(stub any) reflect.Type {
-	stubTyp := reflect.TypeOf(stub)
-	if stubTyp.Kind() == reflect.Ptr && stubTyp.Elem().Kind() == reflect.Interface {
-		return stubTyp.Elem()
-	}
-	return stubTyp
-}
-
-func collectPool(pool Pool) []poolEntry {
+func collectEntries(reg res.Registry) []poolEntry {
 	var entries []poolEntry
-	pool.Walk(func(t reflect.Type, res any) bool {
-		entries = append(entries, poolEntry{typ: t, res: res})
+	reg.WalkEntries(func(e res.Entry) bool {
+		entries = append(entries, poolEntry{typ: e.Type, res: e.Value})
 		return true
 	})
 	return entries

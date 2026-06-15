@@ -1,17 +1,26 @@
 /*
-Пакет sdi — wire-only DI: dedupe interface ports, topo-sort, Inject.
+Пакет sdi — wire-only DI: dedupe ports, topo-sort, Inject.
 
-sdi не строит ресурсы. Pool — Walk + Dedup (policy задаёт sdi, executor — res).
+sdi не строит ресурсы. Принимает [res.Registry]; policy задаёт sdi,
+executor — [res.Registry.Remove] по [res.Entry.Replaceable] ([res.TagReplaceable]).
 
 Pipeline:
 
 	ecfg.Parse → builder.Build(cfg, res.Default)
-	pool.Dedup(collectInterfaceDeps, DefaultDedupPolicy)  // inside Resolve
 	sdi.Resolve(res.Default)
-	runner / res.Get
+	runner / res.GetOneByInterface / res.GetOneByType
 
-DedupPolicy по умолчанию: System+User → Remove(System); 2×User / 2×System / ≥3 → error.
+Resolve:
 
-Ошибки Resolve: circular, unresolved, ambiguous dependency.
+	1. cleanupConcretes  — [res.Registry.GetByType] по concrete stubs из Deps
+	2. collectDeps       — interface stubs из Deps
+	3. validateInterfaces — [res.Registry.GetByInterface]
+	4. wire              — topo-sort, Inject
+
+DedupPolicy по умолчанию: Replaceable+explicit → Remove(Replaceable);
+2×explicit / 2×Replaceable / ≥3 → error.
+
+Ошибки Resolve: ambiguous/multiple replaceable/too many (шаги 1–3);
+circular, unresolved (wiring).
 */
 package sdi

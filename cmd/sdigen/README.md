@@ -58,4 +58,4 @@ func (r *service) Inject(args []any) {
 }
 ```
 
-После генерации: `res.Add` / `builder.Build` → `sdi.Resolve(pool)`.
+После генерации: `res.Add` / `builder.Build` → `sdi.Resolve(res.Default)`.

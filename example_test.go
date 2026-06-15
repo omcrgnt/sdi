@@ -2,8 +2,8 @@ package sdi_test
 
 import (
 	"fmt"
-	"reflect"
 
+	"github.com/omcrgnt/res"
 	"github.com/omcrgnt/sdi"
 )
 
@@ -35,30 +35,16 @@ func (a *app) Inject(args []any) {
 	}
 }
 
-type slicePool struct {
-	items []any
-}
-
-func (p *slicePool) Walk(fn func(reflect.Type, any) bool) {
-	for _, item := range p.items {
-		if !fn(reflect.TypeOf(item), item) {
-			break
-		}
-	}
-}
-
-func (p *slicePool) Dedup(_ []reflect.Type, _ sdi.DedupPolicy) error {
-	return nil
-}
-
 func ExampleResolve() {
-	pool := &slicePool{items: []any{&app{}, helloGreeter{}}}
+	reg := res.New()
+	a := &app{}
+	_ = reg.Add(a)
+	_ = reg.Add(helloGreeter{})
 
-	if err := sdi.Resolve(pool); err != nil {
+	if err := sdi.Resolve(reg); err != nil {
 		panic(err)
 	}
 
-	a := pool.items[0].(*app)
 	fmt.Println(a.greeter.Greet())
 	// Output: hello
 }
