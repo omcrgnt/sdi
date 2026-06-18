@@ -40,21 +40,6 @@ func wire(reg res.Registry) error {
 	return inject(ordered)
 }
 
-// matchDep reports whether candidateTyp from pool satisfies dep stub.
-func matchDep(candidateTyp reflect.Type, stub any) bool {
-	stubTyp := reflect.TypeOf(stub)
-
-	if stubTyp.Kind() == reflect.Ptr && stubTyp.Elem().Kind() == reflect.Interface {
-		return candidateTyp.Implements(stubTyp.Elem())
-	}
-
-	if stubTyp.Kind() == reflect.Interface {
-		return candidateTyp.Implements(stubTyp)
-	}
-
-	return candidateTyp == stubTyp
-}
-
 func collectEntries(reg res.Registry) []poolEntry {
 	var entries []poolEntry
 	reg.WalkEntries(func(e res.Entry) bool {
@@ -64,26 +49,33 @@ func collectEntries(reg res.Registry) []poolEntry {
 	return entries
 }
 
-func matchIndices(entries []poolEntry, consumerIdx int, stub any) ([]int, reflect.Type, error) {
-	depType := depStubType(stub)
+func matchIndices(entries []poolEntry, consumerIdx int, stub any) ([]int, depSpec, error) {
+	spec, err := parseDepStub(stub)
+	if err != nil {
+		return nil, depSpec{}, err
+	}
+	depType := depTypeLabel(spec)
 
 	var matches []int
 	for j, candidate := range entries {
 		if consumerIdx == j {
 			continue
 		}
-		if matchDep(candidate.typ, stub) {
+		if matchElem(candidate.typ, spec.elemType) {
 			matches = append(matches, j)
 		}
 	}
 
 	switch len(matches) {
 	case 0:
-		return nil, depType, fmt.Errorf("unresolved dependency: type %s for resource %T", depType, entries[consumerIdx].res)
+		return nil, spec, fmt.Errorf("unresolved dependency: type %s for resource %T", depType, entries[consumerIdx].res)
 	case 1:
-		return matches, depType, nil
+		return matches, spec, nil
 	default:
-		return nil, depType, fmt.Errorf("ambiguous dependency: found %d implementations of %s for resource %T",
+		if spec.card == depMany {
+			return matches, spec, nil
+		}
+		return nil, spec, fmt.Errorf("ambiguous dependency: found %d implementations of %s for resource %T",
 			len(matches), depType, entries[consumerIdx].res)
 	}
 }
@@ -113,8 +105,10 @@ func sortIndices(entries []poolEntry) ([]int, error) {
 					return err
 				}
 
-				if err := visit(matches[0]); err != nil {
-					return err
+				for _, idx := range matches {
+					if err := visit(idx); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -145,12 +139,16 @@ func inject(entries []poolEntry) error {
 
 		var args []any
 		for _, dep := range compatible.Deps() {
-			matches, _, err := matchIndices(entries, i, dep)
+			matches, spec, err := matchIndices(entries, i, dep)
 			if err != nil {
 				return err
 			}
 
-			args = append(args, entries[matches[0]].res)
+			if spec.card == depOne {
+				args = append(args, entries[matches[0]].res)
+			} else {
+				args = append(args, buildSlice(spec.sliceType, entries, matches))
+			}
 		}
 
 		compatible.Inject(args)

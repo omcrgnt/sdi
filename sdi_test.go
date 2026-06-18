@@ -235,3 +235,100 @@ func TestResolveConcreteMatching(t *testing.T) {
 		}
 	})
 }
+
+type readiness interface {
+	Ready() bool
+}
+
+type readyA struct{}
+
+func (readyA) Ready() bool { return true }
+
+type readyB struct{}
+
+func (readyB) Ready() bool { return true }
+
+type manyReadinessConsumer struct {
+	items []readiness
+}
+
+func (m *manyReadinessConsumer) Deps() []any {
+	return []any{([]readiness)(nil)}
+}
+
+func (m *manyReadinessConsumer) Inject(args []any) {
+	for _, arg := range args {
+		if v, ok := arg.([]readiness); ok {
+			m.items = v
+		}
+	}
+}
+
+type manyRepoConsumer struct {
+	repos []*repoImpl
+}
+
+func (c *manyRepoConsumer) Deps() []any {
+	return []any{([]*repoImpl)(nil)}
+}
+
+func (c *manyRepoConsumer) Inject(args []any) {
+	for _, arg := range args {
+		if v, ok := arg.([]*repoImpl); ok {
+			c.repos = v
+		}
+	}
+}
+
+func TestResolve_manyDependencies(t *testing.T) {
+	t.Run("many injects all implementations", func(t *testing.T) {
+		consumer := &manyReadinessConsumer{}
+		a := readyA{}
+		b := readyB{}
+
+		if err := Resolve(testRegistry(consumer, a, b)); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(consumer.items) != 2 {
+			t.Fatalf("expected 2 readiness items, got %d", len(consumer.items))
+		}
+	})
+
+	t.Run("many unresolved when empty", func(t *testing.T) {
+		err := Resolve(testRegistry(&manyReadinessConsumer{}))
+		if err == nil || !strings.Contains(err.Error(), "unresolved dependency") {
+			t.Errorf("expected unresolved error, got %v", err)
+		}
+	})
+
+	t.Run("many skips dedup for duplicate interfaces", func(t *testing.T) {
+		consumer := &manyReadinessConsumer{}
+		if err := Resolve(testRegistry(consumer, readyA{}, readyB{})); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+
+	t.Run("one still ambiguous with duplicates", func(t *testing.T) {
+		err := Resolve(testRegistry(
+			&mockService{},
+			&repoImpl{},
+			&repoImpl{},
+		))
+		if !errors.Is(err, ErrAmbiguousDependency) {
+			t.Errorf("expected ambiguous error, got %v", err)
+		}
+	})
+
+	t.Run("many concrete slice", func(t *testing.T) {
+		consumer := &manyRepoConsumer{}
+		r1 := &repoImpl{}
+		r2 := &repoImpl{}
+
+		if err := Resolve(testRegistry(consumer, r1, r2)); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(consumer.repos) != 2 {
+			t.Fatalf("expected 2 repos, got %d", len(consumer.repos))
+		}
+	})
+}

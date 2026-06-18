@@ -2,7 +2,8 @@
 Пакет sdi — wire-only DI: dedupe ports, topo-sort, Inject.
 
 sdi не строит ресурсы. Принимает [res.Registry]; policy задаёт sdi,
-executor — [res.Registry.Remove] по [res.Entry.Replaceable] ([res.TagReplaceable]).
+executor — [res.Registry.Remove] по [res.Entry.Replaceable] ([res.TagReplaceable])
+и [res.Entry.Fixed] ([res.TagFixed]).
 
 Pipeline:
 
@@ -12,15 +13,23 @@ Pipeline:
 
 Resolve:
 
-	1. cleanupConcretes  — [res.Registry.GetByType] по concrete stubs из Deps
-	2. collectDeps       — interface stubs из Deps
-	3. validateInterfaces — [res.Registry.GetByInterface]
+	1. cleanupConcretes  — [res.Registry.GetByType] по concrete One stubs из Deps
+	2. collectDeps       — interface/concrete One stubs из Deps
+	3. validateInterfaces — [res.Registry.GetByInterface] для One interface stubs
 	4. wire              — topo-sort, Inject
 
-DedupPolicy по умолчанию: Replaceable+explicit → Remove(Replaceable);
+Dependency stubs in Deps() []any:
+
+	(*T)(nil)   — exactly one implementation (0 → error, 2+ → ambiguous)
+	([]T)(nil)  — many, minimum one ([]T injected; pool order preserved)
+
+Many stubs are not subject to dedup; multiple implementations may coexist.
+
+DedupPolicy по умолчанию: Fixed+any duplicate → error;
+Replaceable+explicit → Remove(Replaceable);
 2×explicit / 2×Replaceable / ≥3 → error.
 
-Ошибки Resolve: ambiguous/multiple replaceable/too many (шаги 1–3);
+Ошибки Resolve: ambiguous/multiple replaceable/too many/fixed conflict (шаги 1–3);
 circular, unresolved (wiring).
 */
 package sdi

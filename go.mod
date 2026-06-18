@@ -3,7 +3,7 @@ module github.com/omcrgnt/sdi
 go 1.26.2
 
 require (
-	github.com/omcrgnt/res v0.6.0
+	github.com/omcrgnt/res v0.8.1
 	golang.org/x/tools v0.44.0
 )
 

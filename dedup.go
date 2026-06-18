@@ -10,6 +10,7 @@ type (
 	DedupEntry struct {
 		Value       any
 		Replaceable bool // res: [res.TagReplaceable]
+		Fixed       bool // res: [res.TagFixed]
 	}
 
 	DedupContext struct {
@@ -38,7 +39,11 @@ func applyPolicy(reg res.Registry, types []reflect.Type, query queryFunc, policy
 		resEntries := query(t)
 		dedupEntries := make([]DedupEntry, len(resEntries))
 		for i, e := range resEntries {
-			dedupEntries[i] = DedupEntry{Value: e.Value, Replaceable: e.Replaceable()}
+			dedupEntries[i] = DedupEntry{
+				Value:       e.Value,
+				Replaceable: e.Replaceable(),
+				Fixed:       e.Fixed(),
+			}
 		}
 		if err := policy(DedupContext{
 			DepType: t,
@@ -67,6 +72,14 @@ func validateInterfaces(reg res.Registry, types []reflect.Type, policy DedupPoli
 
 // DefaultDedupPolicy resolves Replaceable+explicit pairs before inject.
 func DefaultDedupPolicy(ctx DedupContext) error {
+	if len(ctx.Entries) > 1 {
+		for _, e := range ctx.Entries {
+			if e.Fixed {
+				return ErrFixedResourceConflict
+			}
+		}
+	}
+
 	switch len(ctx.Entries) {
 	case 0, 1:
 		return nil

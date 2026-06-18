@@ -16,8 +16,12 @@ func collectDeps(reg res.Registry) (concreteTypes, interfaceTypes []reflect.Type
 			return true
 		}
 		for _, stub := range depser.Deps() {
-			t := depStubType(stub)
-			if isInterfaceStub(stub) {
+			spec, err := parseDepStub(stub)
+			if err != nil || spec.card == depMany {
+				continue
+			}
+			t := spec.elemType
+			if t.Kind() == reflect.Interface {
 				if ifaceSeen[t] {
 					continue
 				}
@@ -47,18 +51,10 @@ func collectInterfaceDeps(reg res.Registry) []reflect.Type {
 	return ifaces
 }
 
-func isInterfaceStub(stub any) bool {
-	stubTyp := reflect.TypeOf(stub)
-	if stubTyp.Kind() == reflect.Ptr && stubTyp.Elem().Kind() == reflect.Interface {
-		return true
-	}
-	return stubTyp.Kind() == reflect.Interface
-}
-
 func depStubType(stub any) reflect.Type {
-	stubTyp := reflect.TypeOf(stub)
-	if stubTyp.Kind() == reflect.Ptr && stubTyp.Elem().Kind() == reflect.Interface {
-		return stubTyp.Elem()
+	spec, err := parseDepStub(stub)
+	if err != nil {
+		return reflect.TypeOf(stub)
 	}
-	return stubTyp
+	return depTypeLabel(spec)
 }

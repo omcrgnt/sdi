@@ -35,8 +35,8 @@ tasks:
       - task: test-m
 
   doc:
-    desc: "Package docs (pkgsite) at http://localhost:8080/github.com/omcrgnt/sdi@v0.6.0"
-    interrupt: true
+    desc: "Package docs (pkgsite) at http://localhost:8080/github.com/omcrgnt/sdi"
+    interactive: true
     cmds:
       - |
         docker run --rm -it --init -p 8080:8080 \
