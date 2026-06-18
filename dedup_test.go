@@ -82,6 +82,33 @@ func TestDefaultDedupPolicy(t *testing.T) {
 			t.Fatalf("expected too many, got %v", err)
 		}
 	})
+
+	t.Run("fixed with duplicate", func(t *testing.T) {
+		err := DefaultDedupPolicy(DedupContext{
+			DepType: depType,
+			Entries: []DedupEntry{
+				{Value: &repoImpl{}, Fixed: true},
+				{Value: &repoImpl{}},
+			},
+		})
+		if !errors.Is(err, ErrFixedResourceConflict) {
+			t.Fatalf("expected fixed conflict, got %v", err)
+		}
+	})
+
+	t.Run("fixed with replaceable", func(t *testing.T) {
+		err := DefaultDedupPolicy(DedupContext{
+			DepType: depType,
+			Entries: []DedupEntry{
+				{Value: &repoImpl{}, Fixed: true},
+				{Value: &repoImpl{}, Replaceable: true},
+			},
+			Remove: func(any) error { return nil },
+		})
+		if !errors.Is(err, ErrFixedResourceConflict) {
+			t.Fatalf("expected fixed conflict, got %v", err)
+		}
+	})
 }
 
 func TestResolve_dedupReplaceableInterface(t *testing.T) {
@@ -135,5 +162,49 @@ func TestResolve_dedupReplaceableConcrete(t *testing.T) {
 	}
 	if len(reg.GetByType(reflect.TypeFor[*repoImpl]())) != 1 {
 		t.Fatal("expected replaceable default removed from registry")
+	}
+}
+
+func TestResolve_fixedConcreteConflict(t *testing.T) {
+	fixed := &repoImpl{}
+	other := &repoImpl{}
+	consumer := &concreteConsumer{}
+
+	reg := res.New()
+	if err := reg.AddWithTags(fixed, res.TagFixed); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Add(other); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Add(consumer); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Resolve(reg)
+	if !errors.Is(err, ErrFixedResourceConflict) {
+		t.Fatalf("expected fixed conflict, got %v", err)
+	}
+}
+
+func TestResolve_fixedBlocksReplaceableDedup(t *testing.T) {
+	fixed := &repoImpl{}
+	defaultRepo := &repoImpl{}
+	consumer := &concreteConsumer{}
+
+	reg := res.New()
+	if err := reg.AddWithTags(fixed, res.TagFixed); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.AddWithTags(defaultRepo, res.TagReplaceable); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Add(consumer); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Resolve(reg)
+	if !errors.Is(err, ErrFixedResourceConflict) {
+		t.Fatalf("expected fixed conflict, got %v", err)
 	}
 }
