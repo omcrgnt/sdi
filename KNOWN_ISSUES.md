@@ -1,5 +1,17 @@
 # Known issues
 
+## Dedup only for Deps stub types (backlog)
+
+**Symptom:** Two resources of the same concrete type in pool (e.g. replaceable library default + explicit `Config.Build`) both survive `sdi.Resolve` and `runner` starts both.
+
+**Cause:** `cleanupConcretes` / `validateInterfaces` run only for types collected from `Deps()` stubs (`collectDeps`). Runner-only resources that nothing depends on are never deduped.
+
+**Workaround (rejected):** fake consumer with `Deps: (*T)(nil)` (e.g. ops `ServerAnchor`) — pollutes the dependency model.
+
+**Fix (TODO):** pool-wide Replaceable dedup: for each concrete type in registry with 2+ entries, apply `DefaultDedupPolicy` even when no resource declares that type as a dep. Same policy rules (Replaceable + explicit → Remove replaceable).
+
+**Consumer:** `github.com/omcrgnt/ops` `transport/http` — `DefaultServer` (TagReplaceable) + `Config.Build()` override.
+
 ## Flaky: `TestRun_printsGeneratedPath` (`cmd/sdigen`)
 
 **Symptom:** `task test` / `go test ./cmd/sdigen/...` sometimes fails with:
