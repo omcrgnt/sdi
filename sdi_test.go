@@ -294,10 +294,13 @@ func TestResolve_manyDependencies(t *testing.T) {
 		}
 	})
 
-	t.Run("many unresolved when empty", func(t *testing.T) {
-		err := Resolve(testRegistry(&manyReadinessConsumer{}))
-		if err == nil || !strings.Contains(err.Error(), "unresolved dependency") {
-			t.Errorf("expected unresolved error, got %v", err)
+	t.Run("many empty slice when no implementors", func(t *testing.T) {
+		consumer := &manyReadinessConsumer{}
+		if err := Resolve(testRegistry(consumer)); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(consumer.items) != 0 {
+			t.Fatalf("expected 0 readiness items, got %d", len(consumer.items))
 		}
 	})
 

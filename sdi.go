@@ -68,6 +68,9 @@ func matchIndices(entries []poolEntry, consumerIdx int, stub any) ([]int, depSpe
 
 	switch len(matches) {
 	case 0:
+		if spec.card == depMany {
+			return []int{}, spec, nil
+		}
 		return nil, spec, fmt.Errorf("unresolved dependency: type %s for resource %T", depType, entries[consumerIdx].res)
 	case 1:
 		return matches, spec, nil
