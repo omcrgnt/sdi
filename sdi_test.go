@@ -5,16 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/omcrgnt/res"
+	"github.com/omcrgnt/res/restest"
 )
-
-func testRegistry(items ...any) res.Registry {
-	r := res.New()
-	for _, v := range items {
-		_ = r.Add(v)
-	}
-	return r
-}
 
 // --- Mocks (конвенция deps + embed) ---
 
@@ -66,7 +58,7 @@ func TestResolve(t *testing.T) {
 		svc := &mockService{}
 		repo := &repoImpl{}
 
-		err := Resolve(testRegistry(svc, repo))
+		err := Resolve(restest.With(svc, repo))
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -77,21 +69,21 @@ func TestResolve(t *testing.T) {
 	})
 
 	t.Run("circular dependency error", func(t *testing.T) {
-		err := Resolve(testRegistry(&structA{}, &structB{}))
+		err := Resolve(restest.With(&structA{}, &structB{}))
 		if err == nil || !strings.Contains(err.Error(), "circular dependency") {
 			t.Errorf("expected circular dependency error, got %v", err)
 		}
 	})
 
 	t.Run("unresolved dependency error", func(t *testing.T) {
-		err := Resolve(testRegistry(&mockService{}))
+		err := Resolve(restest.With(&mockService{}))
 		if err == nil || !strings.Contains(err.Error(), "unresolved dependency") {
 			t.Errorf("expected unresolved error, got %v", err)
 		}
 	})
 
 	t.Run("ambiguous interface dependency error", func(t *testing.T) {
-		err := Resolve(testRegistry(
+		err := Resolve(restest.With(
 			&mockService{},
 			&repoImpl{},
 			&repoImpl{},
@@ -105,7 +97,7 @@ func TestResolve(t *testing.T) {
 		svc := &mockService{}
 		repo := &repoImpl{}
 
-		if err := Resolve(testRegistry(svc, repo)); err != nil {
+		if err := Resolve(restest.With(svc, repo)); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if svc.repo == nil {
@@ -187,7 +179,7 @@ func TestResolveConcreteMatching(t *testing.T) {
 		consumer := &concreteConsumer{}
 		repo := &repoImpl{}
 
-		if err := Resolve(testRegistry(consumer, repo)); err != nil {
+		if err := Resolve(restest.With(consumer, repo)); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if consumer.repo != repo {
@@ -199,7 +191,7 @@ func TestResolveConcreteMatching(t *testing.T) {
 		consumer := &needsAPI{}
 		other := &otherHandler{}
 
-		err := Resolve(testRegistry(consumer, other))
+		err := Resolve(restest.With(consumer, other))
 		if err == nil || !strings.Contains(err.Error(), "unresolved dependency") {
 			t.Errorf("expected unresolved error, got %v", err)
 		}
@@ -208,7 +200,7 @@ func TestResolveConcreteMatching(t *testing.T) {
 	t.Run("concrete type ambiguous", func(t *testing.T) {
 		consumer := &concreteConsumer{}
 
-		err := Resolve(testRegistry(
+		err := Resolve(restest.With(
 			consumer,
 			&repoImpl{},
 			&repoImpl{},
@@ -224,7 +216,7 @@ func TestResolveConcreteMatching(t *testing.T) {
 		main := &mainSrv{}
 		technical := &techSrv{}
 
-		if err := Resolve(testRegistry(api, tech, main, technical)); err != nil {
+		if err := Resolve(restest.With(api, tech, main, technical)); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if main.handler != api {
@@ -286,7 +278,7 @@ func TestResolve_manyDependencies(t *testing.T) {
 		a := readyA{}
 		b := readyB{}
 
-		if err := Resolve(testRegistry(consumer, a, b)); err != nil {
+		if err := Resolve(restest.With(consumer, a, b)); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if len(consumer.items) != 2 {
@@ -296,7 +288,7 @@ func TestResolve_manyDependencies(t *testing.T) {
 
 	t.Run("many empty slice when no implementors", func(t *testing.T) {
 		consumer := &manyReadinessConsumer{}
-		if err := Resolve(testRegistry(consumer)); err != nil {
+		if err := Resolve(restest.With(consumer)); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if len(consumer.items) != 0 {
@@ -306,13 +298,13 @@ func TestResolve_manyDependencies(t *testing.T) {
 
 	t.Run("many skips dedup for duplicate interfaces", func(t *testing.T) {
 		consumer := &manyReadinessConsumer{}
-		if err := Resolve(testRegistry(consumer, readyA{}, readyB{})); err != nil {
+		if err := Resolve(restest.With(consumer, readyA{}, readyB{})); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})
 
 	t.Run("one still ambiguous with duplicates", func(t *testing.T) {
-		err := Resolve(testRegistry(
+		err := Resolve(restest.With(
 			&mockService{},
 			&repoImpl{},
 			&repoImpl{},
@@ -327,7 +319,7 @@ func TestResolve_manyDependencies(t *testing.T) {
 		r1 := &repoImpl{}
 		r2 := &repoImpl{}
 
-		if err := Resolve(testRegistry(consumer, r1, r2)); err != nil {
+		if err := Resolve(restest.With(consumer, r1, r2)); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if len(consumer.repos) != 2 {
