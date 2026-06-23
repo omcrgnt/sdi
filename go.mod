@@ -3,10 +3,10 @@ module github.com/omcrgnt/sdi
 go 1.26.2
 
 retract (
-	[v1.0.0, v1.20.0]
-	[v0.1.0, v0.20.0]
-	v0.20.1 // broken imports
 	v1.3.2 // fix retract
+	[v1.0.0, v1.20.0]
+	v0.20.1 // broken imports
+	[v0.1.0, v0.20.0]
 )
 
 require (

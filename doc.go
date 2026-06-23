@@ -32,10 +32,11 @@ DedupPolicy по умолчанию: Fixed+any duplicate → error;
 Replaceable+explicit → Remove(Replaceable);
 2×explicit / 2×Replaceable / ≥3 → error.
 
-Сейчас dedup (cleanupConcretes / validateInterfaces) вызывается только для типов,
-собранных из Deps() stubs (collectDeps). Ресурсы в pool без dep-stub на их тип
-(например runner-only *systemServer) не dedup'ятся — Replaceable default + explicit
-override требуют pool-wide dedup по concrete type (backlog, см. ops transport/http).
+cleanupConcretes дедупит concrete типы из union: One stubs из Deps() (collectDeps)
+и concrete типы с 2+ entries, где хотя бы один [res.TagReplaceable]
+(collectDuplicateConcreteTypes). Runner-only Replaceable default + explicit override
+(ops transport/http) dedup'ятся до wire без fake dep consumer. Many-deps и несколько
+явных одного типа без Replaceable не затрагиваются.
 
 Ошибки Resolve: ambiguous/multiple replaceable/too many/fixed conflict (шаги 1–3);
 circular, unresolved (wiring).
