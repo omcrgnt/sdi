@@ -41,9 +41,44 @@ func collectDeps(reg res.Registry) (concreteTypes, interfaceTypes []reflect.Type
 	return concreteTypes, interfaceTypes
 }
 
+func collectDuplicateConcreteTypes(reg res.Registry) []reflect.Type {
+	counts := make(map[reflect.Type]int)
+	hasReplaceable := make(map[reflect.Type]bool)
+	reg.WalkEntries(func(e res.Entry) bool {
+		counts[e.Type]++
+		if e.Replaceable() {
+			hasReplaceable[e.Type] = true
+		}
+		return true
+	})
+
+	var types []reflect.Type
+	for t, n := range counts {
+		if n >= 2 && hasReplaceable[t] {
+			types = append(types, t)
+		}
+	}
+	return types
+}
+
+func unionTypes(a, b []reflect.Type) []reflect.Type {
+	seen := make(map[reflect.Type]bool, len(a)+len(b))
+	var out []reflect.Type
+	for _, types := range [][]reflect.Type{a, b} {
+		for _, t := range types {
+			if seen[t] {
+				continue
+			}
+			seen[t] = true
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func collectConcreteDeps(reg res.Registry) []reflect.Type {
-	concretes, _ := collectDeps(reg)
-	return concretes
+	stubConcretes, _ := collectDeps(reg)
+	return unionTypes(stubConcretes, collectDuplicateConcreteTypes(reg))
 }
 
 func collectInterfaceDeps(reg res.Registry) []reflect.Type {

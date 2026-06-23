@@ -138,6 +138,33 @@ func TestResolve_dedupReplaceableInterface(t *testing.T) {
 	}
 }
 
+func TestResolve_poolWideDedupWithoutDepStub(t *testing.T) {
+	defaultRepo := &repoImpl{}
+	userRepo := &repoImpl{}
+
+	reg := res.New()
+	if err := reg.AddWithTags(defaultRepo, res.TagReplaceable); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Add(userRepo); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Resolve(reg); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(reg.GetByType(reflect.TypeFor[*repoImpl]())) != 1 {
+		t.Fatal("expected replaceable default removed from registry")
+	}
+	got, err := reg.GetOneByType(reflect.TypeFor[*repoImpl]())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != userRepo {
+		t.Fatal("expected explicit repo to remain after pool-wide dedup")
+	}
+}
+
 func TestResolve_dedupReplaceableConcrete(t *testing.T) {
 	defaultRepo := &repoImpl{}
 	userRepo := &repoImpl{}

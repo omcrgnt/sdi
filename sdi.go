@@ -13,7 +13,8 @@ type poolEntry struct {
 }
 
 func Resolve(reg res.Registry) error {
-	concreteTypes, ifaces := collectDeps(reg)
+	stubConcretes, ifaces := collectDeps(reg)
+	concreteTypes := unionTypes(stubConcretes, collectDuplicateConcreteTypes(reg))
 
 	if err := cleanupConcretes(reg, concreteTypes, DefaultDedupPolicy); err != nil {
 		return err
