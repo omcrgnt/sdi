@@ -12,39 +12,20 @@ type poolEntry struct {
 	res any
 }
 
-func Resolve(reg res.Registry) error {
-	stubConcretes, ifaces := collectDeps(reg)
-	concreteTypes := unionTypes(stubConcretes, collectDuplicateConcreteTypes(reg))
-
-	if err := cleanupConcretes(reg, concreteTypes, DefaultDedupPolicy); err != nil {
-		return err
-	}
-	if err := validateInterfaces(reg, ifaces, DefaultDedupPolicy); err != nil {
-		return err
-	}
-	return wire(reg)
-}
-
-func wire(reg res.Registry) error {
+// Resolve wires dependencies via Deps/Inject. Pool entries must be materialized before call.
+// One-dep: 0 → unresolved, 1 → inject, 2+ → ambiguous. Many-deps: registration order.
+func Resolve(reg Registry) error {
 	entries := collectEntries(reg)
-
-	indices, err := sortIndices(entries)
-	if err != nil {
+	if err := checkCycles(entries); err != nil {
 		return err
 	}
-
-	ordered := make([]poolEntry, len(indices))
-	for i, idx := range indices {
-		ordered[i] = entries[idx]
-	}
-
-	return inject(ordered)
+	return inject(entries)
 }
 
-func collectEntries(reg res.Registry) []poolEntry {
+func collectEntries(reg Registry) []poolEntry {
 	var entries []poolEntry
 	reg.WalkEntries(func(e res.Entry) bool {
-		entries = append(entries, poolEntry{typ: e.Type, res: e.Value})
+		entries = append(entries, poolEntry{typ: e.Type(), res: e.Value()})
 		return true
 	})
 	return entries
@@ -84,12 +65,9 @@ func matchIndices(entries []poolEntry, consumerIdx int, stub any) ([]int, depSpe
 	}
 }
 
-func sortIndices(entries []poolEntry) ([]int, error) {
-	var (
-		sorted  []int
-		visited = make(map[int]bool)
-		temp    = make(map[int]bool)
-	)
+func checkCycles(entries []poolEntry) error {
+	visited := make(map[int]bool)
+	temp := make(map[int]bool)
 
 	var visit func(int) error
 	visit = func(i int) error {
@@ -108,7 +86,6 @@ func sortIndices(entries []poolEntry) ([]int, error) {
 				if err != nil {
 					return err
 				}
-
 				for _, idx := range matches {
 					if err := visit(idx); err != nil {
 						return err
@@ -119,19 +96,17 @@ func sortIndices(entries []poolEntry) ([]int, error) {
 
 		temp[i] = false
 		visited[i] = true
-		sorted = append(sorted, i)
 		return nil
 	}
 
 	for i := range entries {
 		if !visited[i] {
 			if err := visit(i); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
-
-	return sorted, nil
+	return nil
 }
 
 func inject(entries []poolEntry) error {

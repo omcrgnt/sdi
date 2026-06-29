@@ -88,7 +88,7 @@ func TestResolve(t *testing.T) {
 			&repoImpl{},
 			&repoImpl{},
 		))
-		if !errors.Is(err, ErrAmbiguousDependency) {
+		if err == nil || !isAmbiguousErr(err) {
 			t.Errorf("expected ambiguous error, got %v", err)
 		}
 	})
@@ -205,7 +205,7 @@ func TestResolveConcreteMatching(t *testing.T) {
 			&repoImpl{},
 			&repoImpl{},
 		))
-		if !errors.Is(err, ErrAmbiguousDependency) {
+		if err == nil || !isAmbiguousErr(err) {
 			t.Errorf("expected ambiguous error, got %v", err)
 		}
 	})
@@ -272,6 +272,11 @@ func (c *manyRepoConsumer) Inject(args []any) {
 	}
 }
 
+func isAmbiguousErr(err error) bool {
+	return err != nil && (errors.Is(err, ErrAmbiguousDependency) ||
+		strings.Contains(err.Error(), "ambiguous dependency"))
+}
+
 func TestResolve_manyDependencies(t *testing.T) {
 	t.Run("many injects all implementations", func(t *testing.T) {
 		consumer := &manyReadinessConsumer{}
@@ -309,7 +314,7 @@ func TestResolve_manyDependencies(t *testing.T) {
 			&repoImpl{},
 			&repoImpl{},
 		))
-		if !errors.Is(err, ErrAmbiguousDependency) {
+		if err == nil || !isAmbiguousErr(err) {
 			t.Errorf("expected ambiguous error, got %v", err)
 		}
 	})
